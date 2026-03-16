@@ -1,8 +1,8 @@
-# VolAI
+# VolatilityAI
 
 **AI-Powered Memory Forensics Companion for Volatility3**
 
-VolAI combines [Volatility3](https://github.com/volatilityfoundation/volatility3) memory forensics with LLMs to automate triage analysis and enable interactive investigation of memory dumps. Unlike a plain LLM wrapper, VolAI validates LLM output against real evidence, runs deterministic detection rules, and persists sessions for comparison over time.
+VolatilityAI combines [Volatility3](https://github.com/volatilityfoundation/volatility3) memory forensics with LLMs to automate triage analysis and enable interactive investigation of memory dumps. Unlike a plain LLM wrapper, VolAI validates LLM output against real evidence, runs deterministic detection rules, and persists sessions for comparison over time.
 
 ## Features
 
