@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from pathlib import Path
 
 import click
@@ -84,7 +85,13 @@ async def run_triage(
 
     click.echo("Sending results to LLM for analysis...")
     try:
-        response = await backend.send(messages)
+        use_json_mode = config.json_mode if config.json_mode is not None else backend.supports_json_mode
+        send_kwargs: dict = {"json_mode": use_json_mode}
+        if config.temperature is not None:
+            send_kwargs["temperature"] = config.temperature
+        if config.max_tokens is not None:
+            send_kwargs["max_tokens"] = config.max_tokens
+        response = await backend.send(messages, **send_kwargs)
     except Exception as e:
         logger.warning("LLM request failed: %s", e)
         plugin_outputs = [
@@ -163,6 +170,45 @@ async def run_triage(
     return report
 
 
+def _coerce_evidence(data: dict) -> dict:
+    """Coerce non-string evidence items to strings.
+
+    Small LLMs sometimes return evidence as objects instead of strings.
+    """
+    for finding in data.get("findings", []):
+        if not isinstance(finding, dict):
+            continue
+        evidence = finding.get("evidence")
+        if not isinstance(evidence, list):
+            continue
+        finding["evidence"] = [
+            " ".join(f"{k}={v}" for k, v in item.items())
+            if isinstance(item, dict)
+            else str(item)
+            for item in evidence
+        ]
+    return data
+
+
+def _try_repair_json(text: str) -> str:
+    """Fix common JSON errors from small LLMs.
+
+    Only called after json.loads() already failed, so aggressive fixes are safe.
+    """
+    # Fix unescaped backslashes (escape any \ not already part of \\ or \")
+    text = re.sub(r'(?<!\\)\\(?![\\"])', r'\\\\', text)
+    # Close unclosed brackets then braces (order matters for nested structures)
+    opens = text.count('[') - text.count(']')
+    if opens > 0:
+        text += ']' * opens
+    opens = text.count('{') - text.count('}')
+    if opens > 0:
+        text += '}' * opens
+    # Remove trailing commas before } or ] (after closing, so truncated commas are caught)
+    text = re.sub(r',\s*([}\]])', r'\1', text)
+    return text
+
+
 def _parse_report(
     llm_response: str,
     config: VolAIConfig,
@@ -181,12 +227,28 @@ def _parse_report(
 
     try:
         data = json.loads(text)
+    except json.JSONDecodeError:
+        try:
+            repaired = _try_repair_json(text)
+            data = json.loads(repaired)
+        except json.JSONDecodeError as e:
+            logger.warning("Failed to parse LLM response as JSON: %s", e)
+            return TriageReport(
+                dump_path=str(dump_path),
+                llm_provider=backend.name(),
+                llm_model=config.model or "unknown",
+                summary=llm_response,
+                risk_score=0,
+            )
+
+    try:
+        data = _coerce_evidence(data)
         data["dump_path"] = str(dump_path)
         data["llm_provider"] = backend.name()
         data["llm_model"] = config.model or "unknown"
         return TriageReport.model_validate(data)
-    except (json.JSONDecodeError, ValidationError) as e:
-        logger.warning("Failed to parse LLM response as JSON: %s", e)
+    except ValidationError as e:
+        logger.warning("Failed to validate LLM response: %s", e)
         return TriageReport(
             dump_path=str(dump_path),
             llm_provider=backend.name(),

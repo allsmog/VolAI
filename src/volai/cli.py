@@ -7,6 +7,11 @@ from pathlib import Path
 import click
 
 from volai.config import resolve_config
+from volai.llm.base import get_registered_providers
+
+
+def _provider_choice():
+    return click.Choice(get_registered_providers())
 
 
 @click.group()
@@ -20,7 +25,7 @@ def cli() -> None:
 @click.option(
     "--provider",
     "-p",
-    type=click.Choice(["claude", "openai", "local"]),
+    type=_provider_choice(),
     envvar="VOLAI_PROVIDER",
     required=True,
     help="LLM provider (or set VOLAI_PROVIDER).",
@@ -65,6 +70,13 @@ def cli() -> None:
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose logging.")
 @click.option("--no-rules", is_flag=True, help="Disable behavioral detection rules.")
 @click.option("--no-save", is_flag=True, help="Don't persist session to database.")
+@click.option(
+    "--json-mode/--no-json-mode",
+    default=None,
+    help="Force JSON mode on/off. Default: auto-detect from provider.",
+)
+@click.option("--temperature", type=float, default=None, help="LLM sampling temperature.")
+@click.option("--max-tokens", type=int, default=None, help="Max tokens in LLM response.")
 def analyze(
     dump: Path,
     provider: str,
@@ -77,6 +89,9 @@ def analyze(
     verbose: bool,
     no_rules: bool,
     no_save: bool,
+    json_mode: bool | None,
+    temperature: float | None,
+    max_tokens: int | None,
 ) -> None:
     """Automated triage analysis of a memory dump."""
     _setup_logging(verbose)
@@ -86,6 +101,9 @@ def analyze(
         model=model,
         api_key=api_key,
         base_url=base_url,
+        json_mode=json_mode,
+        temperature=temperature,
+        max_tokens=max_tokens,
     )
     plugin_list = plugins.split(",") if plugins else None
 
@@ -119,7 +137,7 @@ def analyze(
 @click.option(
     "--provider",
     "-p",
-    type=click.Choice(["claude", "openai", "local"]),
+    type=_provider_choice(),
     envvar="VOLAI_PROVIDER",
     required=True,
     help="LLM provider (or set VOLAI_PROVIDER).",
@@ -146,6 +164,8 @@ def analyze(
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose logging.")
 @click.option("--resume", "resume_id", default=None, help="Resume a previous chat session by ID.")
 @click.option("--no-save", is_flag=True, help="Don't persist session to database.")
+@click.option("--temperature", type=float, default=None, help="LLM sampling temperature.")
+@click.option("--max-tokens", type=int, default=None, help="Max tokens in LLM response.")
 def chat(
     dump: Path,
     provider: str,
@@ -155,6 +175,8 @@ def chat(
     verbose: bool,
     resume_id: str | None,
     no_save: bool,
+    temperature: float | None,
+    max_tokens: int | None,
 ) -> None:
     """Interactive forensic investigation chat session."""
     _setup_logging(verbose)
@@ -164,6 +186,8 @@ def chat(
         model=model,
         api_key=api_key,
         base_url=base_url,
+        temperature=temperature,
+        max_tokens=max_tokens,
     )
 
     store = None
@@ -288,7 +312,7 @@ def sessions_export(session_id: str, output: Path | None) -> None:
 @click.argument("dump", type=click.Path(exists=True, path_type=Path))
 @click.option(
     "--provider", "-p",
-    type=click.Choice(["claude", "openai", "local"]),
+    type=_provider_choice(),
     envvar="VOLAI_PROVIDER", required=True,
 )
 @click.option("--model", "-m", envvar="VOLAI_MODEL", default=None)

@@ -10,6 +10,9 @@ class VolAIConfig:
     model: str | None
     api_key: str | None
     base_url: str | None
+    json_mode: bool | None = None
+    temperature: float | None = None
+    max_tokens: int | None = None
 
 
 _PROVIDER_KEY_ENV = {
@@ -24,6 +27,9 @@ def resolve_config(
     model: str | None = None,
     api_key: str | None = None,
     base_url: str | None = None,
+    json_mode: bool | None = None,
+    temperature: float | None = None,
+    max_tokens: int | None = None,
 ) -> VolAIConfig:
     """Resolve configuration from explicit args and environment variables.
 
@@ -39,4 +45,7 @@ def resolve_config(
         model=model,
         api_key=api_key,
         base_url=base_url,
+        json_mode=json_mode,
+        temperature=temperature,
+        max_tokens=max_tokens,
     )

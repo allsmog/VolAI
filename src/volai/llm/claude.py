@@ -6,6 +6,8 @@ DEFAULT_MODEL = "claude-sonnet-4-20250514"
 
 
 class ClaudeBackend(LLMBackend):
+    provider = "claude"
+
     def __init__(
         self,
         model: str | None = None,
@@ -20,6 +22,7 @@ class ClaudeBackend(LLMBackend):
         messages: list[Message],
         temperature: float = 0.2,
         max_tokens: int = 4096,
+        json_mode: bool = False,
     ) -> LLMResponse:
         system_text = None
         conversation = []

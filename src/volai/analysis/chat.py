@@ -46,6 +46,12 @@ async def run_chat(
     runner = VolatilityRunner(dump_path)
     runner.initialize()
 
+    send_kwargs: dict = {}
+    if config.temperature is not None:
+        send_kwargs["temperature"] = config.temperature
+    if config.max_tokens is not None:
+        send_kwargs["max_tokens"] = config.max_tokens
+
     available_plugins = runner.list_available_plugins()
     plugin_list_str = "\n".join(f"  - {p}" for p in available_plugins)
 
@@ -176,7 +182,7 @@ async def run_chat(
                 )
             )
             try:
-                response = await backend.send(conversation)
+                response = await backend.send(conversation, **send_kwargs)
                 click.echo(f"\n{response.content}\n")
                 conversation.append(
                     Message(role="assistant", content=response.content)
@@ -190,7 +196,7 @@ async def run_chat(
         conversation.append(Message(role="user", content=user_input))
 
         try:
-            response = await backend.send(conversation)
+            response = await backend.send(conversation, **send_kwargs)
             click.echo(f"\n{response.content}\n")
             conversation.append(
                 Message(role="assistant", content=response.content)

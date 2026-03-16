@@ -1,7 +1,7 @@
 import pytest
 
-from volai.llm import get_backend
-from volai.llm.base import LLMBackend, LLMResponse, Message
+from volai.llm import get_backend, get_registered_providers
+from volai.llm.base import LLMBackend, LLMResponse, Message, _BACKEND_REGISTRY
 from volai.llm.claude import ClaudeBackend
 from volai.llm.openai import OpenAIBackend
 from volai.llm.local import LocalBackend
@@ -33,6 +33,40 @@ class TestLLMResponse:
     def test_creation_without_usage(self):
         resp = LLMResponse(content="test", model="llama3")
         assert resp.usage is None
+
+
+class TestBackendRegistry:
+    def test_all_providers_registered(self):
+        assert "claude" in _BACKEND_REGISTRY
+        assert "openai" in _BACKEND_REGISTRY
+        assert "local" in _BACKEND_REGISTRY
+
+    def test_registry_maps_to_correct_classes(self):
+        assert _BACKEND_REGISTRY["claude"] is ClaudeBackend
+        assert _BACKEND_REGISTRY["openai"] is OpenAIBackend
+        assert _BACKEND_REGISTRY["local"] is LocalBackend
+
+    def test_get_registered_providers_returns_sorted(self):
+        providers = get_registered_providers()
+        assert providers == ["claude", "local", "openai"]
+
+    def test_get_registered_providers_returns_list(self):
+        providers = get_registered_providers()
+        assert isinstance(providers, list)
+
+
+class TestSupportsJsonMode:
+    def test_local_supports_json_mode(self):
+        backend = get_backend("local")
+        assert backend.supports_json_mode is True
+
+    def test_openai_supports_json_mode(self):
+        backend = get_backend("openai", api_key="test")
+        assert backend.supports_json_mode is True
+
+    def test_claude_does_not_support_json_mode(self):
+        backend = get_backend("claude", api_key="test")
+        assert backend.supports_json_mode is False
 
 
 class TestGetBackend:

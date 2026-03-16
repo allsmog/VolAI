@@ -13,7 +13,7 @@ VolAI combines [Volatility3](https://github.com/volatilityfoundation/volatility3
 - **Session Persistence** — analyses and chat sessions are saved to SQLite. Resume chats, compare reports, export sessions as JSON
 - **Timeline Extraction** (`volai timeline`) — builds a chronological view of events from plugin data (process creation, network connections, bash commands) without needing an LLM
 - **Report Diffing** (`volai diff`) — compare two triage reports to see what changed: new/resolved findings, risk score delta, new PIDs, new network connections
-- **Pluggable LLM Backends** — Claude (Anthropic), OpenAI, or any OpenAI-compatible endpoint (Ollama, vLLM, llama.cpp, etc.)
+- **Pluggable LLM Backends** — Claude (Anthropic), OpenAI, or any OpenAI-compatible endpoint (Ollama, vLLM, llama.cpp, etc.). Self-registering: add a new provider class and it appears in the CLI automatically
 - **Graceful Degradation** — if the LLM fails or returns garbage, behavioral rules still produce actionable findings and enforce a risk score floor
 
 ## Installation
@@ -53,6 +53,12 @@ volai analyze memory.dmp --provider openai --os-profile windows \
 
 # Disable behavioral rules or session saving
 volai analyze memory.dmp --provider claude --no-rules --no-save
+
+# Tune LLM parameters
+volai analyze memory.dmp --provider local --temperature 0.8 --max-tokens 8192
+
+# Force JSON mode on/off (auto-detected per provider by default)
+volai analyze memory.dmp --provider claude --json-mode
 ```
 
 ### Interactive Chat
@@ -62,6 +68,9 @@ volai chat memory.dmp --provider claude
 
 # Resume a previous session
 volai chat memory.dmp --provider claude --resume abc12345
+
+# With custom LLM settings
+volai chat memory.dmp --provider local --temperature 0.5 --max-tokens 16384
 ```
 
 Chat commands:
@@ -148,6 +157,16 @@ volai analyze memory.dmp --provider local \
 | `VOLAI_API_KEY` | API key (overrides provider-specific vars) |
 | `VOLAI_BASE_URL` | Base URL for local/custom endpoints |
 | `VOLAI_DB_PATH` | SQLite database path (default: `~/.volai/volai.db`) |
+
+### LLM Tuning Options
+
+| Flag | Description | Default |
+|---|---|---|
+| `--temperature` | Sampling temperature | `0.2` |
+| `--max-tokens` | Max tokens in LLM response | `4096` |
+| `--json-mode` / `--no-json-mode` | Force JSON constrained output | Auto per provider |
+
+When omitted, each provider uses sensible defaults. JSON mode is auto-enabled for providers that support it (OpenAI, local/Ollama) and disabled for those that don't (Claude).
 
 ## How It Works
 
@@ -273,7 +292,7 @@ src/volai/
 ├── cli.py                          # Click CLI (analyze, chat, timeline, diff, sessions)
 ├── config.py                       # Configuration resolution
 ├── llm/
-│   ├── base.py                     # LLMBackend ABC
+│   ├── base.py                     # LLMBackend ABC + self-registering backend registry
 │   ├── claude.py                   # Anthropic SDK backend
 │   ├── openai.py                   # OpenAI SDK backend
 │   └── local.py                    # Generic OpenAI-compatible backend
@@ -314,7 +333,7 @@ Plugins are selected by OS profile. If no profile is specified, all are attempte
 ## Testing
 
 ```bash
-# Run all tests (211 tests)
+# Run all tests (235 tests)
 pytest tests/ -v
 
 # Lint
