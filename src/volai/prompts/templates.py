@@ -3,12 +3,33 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from volai.rules.models import RuleFinding
     from volai.volatility.runner import PluginResult
+
+
+def format_rule_findings(rule_findings: list[RuleFinding]) -> str:
+    """Format rule findings as a text section for the LLM prompt."""
+    lines = [
+        "## Deterministic Rule-Based Findings",
+        "The following were identified by automated detection rules.",
+        "Treat these as confirmed matches — correlate with plugin data.",
+        "",
+    ]
+    for rf in rule_findings:
+        lines.append(f"### [{rf.rule_id}] {rf.title} (severity: {rf.severity})")
+        lines.append(rf.description)
+        if rf.evidence:
+            lines.append(f"  Evidence: {', '.join(rf.evidence)}")
+        if rf.mitre_attack:
+            lines.append(f"  MITRE: {', '.join(rf.mitre_attack)}")
+        lines.append("")
+    return "\n".join(lines)
 
 
 def build_triage_prompt(
     plugin_results: list[PluginResult],
     dump_path: str,
+    rule_findings: list[RuleFinding] | None = None,
 ) -> str:
     """Build the user message containing all plugin output for triage analysis."""
     sections: list[str] = []
@@ -47,9 +68,13 @@ def build_triage_prompt(
             f"## {result.plugin_name}\n" + "\n".join(lines) + "\n"
         )
 
-    return (
+    preamble = (
         f"Memory dump: {dump_path}\n\n"
         "Below are the outputs from Volatility3 plugins.\n"
         "Analyze these results and provide a forensic triage report.\n\n"
-        + "\n".join(sections)
     )
+
+    if rule_findings:
+        preamble += format_rule_findings(rule_findings) + "\n"
+
+    return preamble + "\n".join(sections)

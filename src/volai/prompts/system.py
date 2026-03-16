@@ -18,6 +18,10 @@ Focus on: suspicious processes, network connections to unusual IPs, code injecti
 (malfind hits), privilege escalation, persistence mechanisms, and lateral movement \
 indicators.
 
+If deterministic rule-based findings are provided, treat them as high-confidence \
+signals. Correlate them with plugin data, provide additional context, and incorporate \
+them into your analysis. Do not contradict confirmed rule findings.
+
 Return ONLY valid JSON. No markdown fencing, no commentary outside the JSON."""
 
 CHAT_SYSTEM_PROMPT = """\

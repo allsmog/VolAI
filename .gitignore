@@ -9,4 +9,17 @@ build/
 .ruff_cache/
 .pytest_cache/
 .venv/
+env/
 *.so
+.env
+.env.*
+.DS_Store
+.vscode/
+.idea/
+
+# VolAI data
+*.dmp
+*.raw
+*.vmem
+volai.db
+~/.volai/

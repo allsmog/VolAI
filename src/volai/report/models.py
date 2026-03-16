@@ -25,6 +25,9 @@ class Finding(BaseModel):
     description: str
     evidence: list[str] = Field(default_factory=list)
     mitre_attack: list[str] = Field(default_factory=list)
+    grounded: bool | None = Field(default=None)
+    confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+    grounding_details: dict | None = Field(default=None)
 
 
 class TriageReport(BaseModel):
@@ -43,3 +46,45 @@ class TriageReport(BaseModel):
     plugin_outputs: list[PluginOutput] = Field(default_factory=list)
     recommendations: list[str] = Field(default_factory=list)
     errors: list[str] = Field(default_factory=list)
+    grounding_summary: dict | None = Field(default=None)
+    rule_findings: list[Finding] = Field(default_factory=list)
+
+
+class TimelineEvent(BaseModel):
+    """A single event in a forensic timeline."""
+
+    timestamp: str
+    event_type: str
+    source_plugin: str
+    description: str
+    details: dict = Field(default_factory=dict)
+
+
+class Timeline(BaseModel):
+    """Collection of timeline events."""
+
+    dump_path: str
+    event_count: int = 0
+    earliest: str | None = None
+    latest: str | None = None
+    events: list[TimelineEvent] = Field(default_factory=list)
+
+
+class FindingDiff(BaseModel):
+    """Comparison result for a single finding."""
+
+    status: str  # new, resolved, modified, unchanged
+    finding_a: Finding | None = None
+    finding_b: Finding | None = None
+
+
+class DiffReport(BaseModel):
+    """Result of comparing two triage reports."""
+
+    session_id_a: str
+    session_id_b: str
+    risk_score_delta: int = 0
+    finding_diffs: list[FindingDiff] = Field(default_factory=list)
+    process_diffs: dict = Field(default_factory=dict)
+    network_diffs: dict = Field(default_factory=dict)
+    summary: str = ""

@@ -5,6 +5,7 @@ import logging
 from pathlib import Path
 
 import click
+from pydantic import ValidationError
 
 from volai.config import VolAIConfig
 from volai.llm import get_backend
@@ -24,6 +25,8 @@ async def run_triage(
     os_profile: str | None = None,
     custom_plugins: list[str] | None = None,
     verbose: bool = False,
+    enable_rules: bool = True,
+    store: object | None = None,
 ) -> TriageReport:
     """Run automated triage analysis on a memory dump."""
     backend = get_backend(
@@ -58,14 +61,53 @@ async def run_triage(
             errors=[f"{r.plugin_name}: {r.error}" for r in failed],
         )
 
-    prompt_text = build_triage_prompt(results, str(dump_path))
+    # Run behavioral rules before LLM call
+    rule_findings_list = []
+    if enable_rules:
+        from volai.rules.behavioral import run_behavioral_rules
+        plugin_results_dict = {r.plugin_name: PluginOutput(
+            plugin_name=r.plugin_name, columns=r.columns,
+            rows=r.rows, row_count=r.row_count, error=r.error,
+        ) for r in results}
+        rule_findings_list = run_behavioral_rules(plugin_results_dict)
+        if rule_findings_list:
+            click.echo(f"Behavioral rules: {len(rule_findings_list)} findings")
+
+    prompt_text = build_triage_prompt(
+        results, str(dump_path),
+        rule_findings=rule_findings_list if rule_findings_list else None,
+    )
     messages = [
         Message(role="system", content=TRIAGE_SYSTEM_PROMPT),
         Message(role="user", content=prompt_text),
     ]
 
     click.echo("Sending results to LLM for analysis...")
-    response = await backend.send(messages)
+    try:
+        response = await backend.send(messages)
+    except Exception as e:
+        logger.warning("LLM request failed: %s", e)
+        plugin_outputs = [
+            PluginOutput(
+                plugin_name=r.plugin_name,
+                columns=r.columns,
+                rows=r.rows,
+                row_count=r.row_count,
+                error=r.error,
+            )
+            for r in results
+        ]
+        errors = [f"{r.plugin_name}: {r.error}" for r in failed]
+        errors.append(f"LLM analysis failed: {e}")
+        return TriageReport(
+            dump_path=str(dump_path),
+            llm_provider=backend.name(),
+            llm_model=config.model or "unknown",
+            summary=f"LLM analysis failed: {e}",
+            risk_score=0,
+            plugin_outputs=plugin_outputs,
+            errors=errors,
+        )
 
     report = _parse_report(response.content, config, backend, dump_path)
 
@@ -80,6 +122,43 @@ async def run_triage(
         for r in results
     ]
     report.errors = [f"{r.plugin_name}: {r.error}" for r in failed]
+
+    # Grounding: validate findings against actual plugin data
+    from volai.analysis.grounding import ground_findings, annotate_report
+
+    ground_results = ground_findings(report.findings, report.plugin_outputs)
+    annotate_report(report, ground_results)
+
+    # Attach rule findings and apply risk score floor
+    if rule_findings_list:
+        from volai.rules.behavioral import (
+            compute_risk_floor,
+            rule_finding_to_finding,
+        )
+
+        report.rule_findings = [
+            rule_finding_to_finding(rf) for rf in rule_findings_list
+        ]
+        risk_floor = compute_risk_floor(rule_findings_list)
+        report.risk_score = max(report.risk_score, risk_floor)
+
+    # Persist session if store provided
+    if store is not None:
+        try:
+            from volai.storage.store import SessionStore
+            if isinstance(store, SessionStore):
+                session = store.create_session(
+                    dump_path=str(dump_path),
+                    session_type="triage",
+                    provider=config.provider,
+                    model=config.model or "unknown",
+                )
+                for po in report.plugin_outputs:
+                    store.save_plugin_output(session["id"], po)
+                store.save_triage_report(session["id"], report)
+                click.echo(f"Session saved: {session['id']}")
+        except Exception as e:
+            logger.warning("Failed to save session: %s", e)
 
     return report
 
@@ -106,7 +185,7 @@ def _parse_report(
         data["llm_provider"] = backend.name()
         data["llm_model"] = config.model or "unknown"
         return TriageReport.model_validate(data)
-    except (json.JSONDecodeError, Exception) as e:
+    except (json.JSONDecodeError, ValidationError) as e:
         logger.warning("Failed to parse LLM response as JSON: %s", e)
         return TriageReport(
             dump_path=str(dump_path),

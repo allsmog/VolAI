@@ -175,6 +175,41 @@ class TestRunTriage:
 
     @patch("volai.analysis.triage.VolatilityRunner")
     @patch("volai.analysis.triage.get_backend")
+    async def test_llm_send_raises_error(self, mock_get_backend, mock_runner_cls):
+        config = VolAIConfig(
+            provider="local", model="llama3", api_key=None, base_url=None
+        )
+
+        mock_runner = MagicMock()
+        mock_runner_cls.return_value = mock_runner
+        mock_runner.run_plugins_async = AsyncMock(
+            return_value=[
+                PluginResult(
+                    plugin_name="windows.pslist.PsList",
+                    columns=["PID", "Name"],
+                    rows=[{"PID": 4, "Name": "System"}],
+                    row_count=1,
+                ),
+            ]
+        )
+
+        mock_backend = MagicMock()
+        mock_backend.name.return_value = "local"
+        mock_backend.send = AsyncMock(side_effect=ConnectionError("Connection refused"))
+        mock_get_backend.return_value = mock_backend
+
+        report = await run_triage(
+            config, Path("/tmp/fake.dmp"), custom_plugins=["windows.pslist.PsList"]
+        )
+        assert "LLM analysis failed" in report.summary
+        assert report.risk_score == 0
+        assert any("LLM analysis failed" in e for e in report.errors)
+        # Plugin outputs should still be attached
+        assert len(report.plugin_outputs) == 1
+        assert report.plugin_outputs[0].plugin_name == "windows.pslist.PsList"
+
+    @patch("volai.analysis.triage.VolatilityRunner")
+    @patch("volai.analysis.triage.get_backend")
     async def test_mixed_success_and_failure(self, mock_get_backend, mock_runner_cls):
         config = VolAIConfig(
             provider="local", model="llama3", api_key=None, base_url=None
