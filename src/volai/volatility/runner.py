@@ -9,6 +9,7 @@ import volatility3.framework
 import volatility3.plugins
 from volatility3.framework import automagic, contexts
 from volatility3.framework import plugins as vol_plugins
+from volatility3.framework.interfaces.plugins import FileHandlerInterface
 
 from volai.volatility.formatter import treegrid_to_dict
 
@@ -83,7 +84,7 @@ class VolatilityRunner:
                 plugin_class,
                 "plugins",
                 progress_callback=self._progress_callback,
-                file_handler=None,
+                open_method=FileHandlerInterface,
             )
 
             if constructed is None:
